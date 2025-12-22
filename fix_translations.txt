@@ -1,0 +1,13 @@
+Rus tilidagi tarjimalardagi xatolar:
+
+1. privacy2Text (ingliz): "вЂ"" → "—" (em dash)
+2. Til boyicha (1938-qator): "boвЂyicha" → "bo'yicha"  
+3. downloadStarted (uzbek, 2367): "boвЂlimida" → "bo'limida"
+4. resumeNo (uzbek, 2374): "YoвЂq" → "Yo'q"
+5. 1-10 (4543): "1вЂ"10" → "1-10"
+6. ticket-purchase (4642, 5710): "ticketвЂ'purchase" → "ticket-purchase"
+7. in-memory (7990): "inвЂ'memory" → "in-memory"  
+8. system-wide (8210): "systemвЂ'wide" → "system-wide"
+9. mini-player (8853): "miniвЂ'player" → "mini-player"
+
+Barcha xatolar UTF-8 encoding muammosidan kelib chiqqan.

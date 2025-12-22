@@ -1,0 +1,166 @@
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    SND VIDEO UPLOAD ARCHITECTURE                         │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                           ADMIN/PARTNER PANEL                             │
+│                         (admin.html - Browser)                            │
+│                                                                           │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │  Step 5: Video Sources                                            │   │
+│  │                                                                    │   │
+│  │  ┌────────────────┐  ┌──────────────────────────┐                │   │
+│  │  │ Add by URL    │  │ Upload from Device  ✓   │  <- TAB TOGGLE  │   │
+│  │  └────────────────┘  └──────────────────────────┘                │   │
+│  │                                                                    │   │
+│  │  ┌──────────────────────────────────────────────────────────┐    │   │
+│  │  │  📁 File Selector (Drag & Drop)                          │    │   │
+│  │  │  ├─ Quality: [1080p ▼]                                   │    │   │
+│  │  │  ├─ Selected: movie.mp4 (1.2 GB)                         │    │   │
+│  │  │  └─ [🚀 Upload Button]                                   │    │   │
+│  │  └──────────────────────────────────────────────────────────┘    │   │
+│  │                                                                    │   │
+│  │  ┌──────────────────────────────────────────────────────────┐    │   │
+│  │  │  📊 Progress Bar                                          │    │   │
+│  │  │  ████████████████░░░░░░  75%                             │    │   │
+│  │  │  Uploading: 945 MB / 1260 MB                             │    │   │
+│  │  └──────────────────────────────────────────────────────────┘    │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     │ FormData (multipart/form-data)
+                                     │ POST /api/upload-to-telegram
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          BACKEND SERVER                                   │
+│                    (Node.js + Express + Multer)                          │
+│                          Port: 3001                                       │
+│                                                                           │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │  Endpoints:                                                      │    │
+│  │  ├─ GET  /api/health                                            │    │
+│  │  └─ POST /api/upload-to-telegram                                │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                                                           │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │  Multer Middleware                                               │    │
+│  │  ├─ Memory Storage (No Disk)                                    │    │
+│  │  ├─ File Validation (video/*)                                   │    │
+│  │  └─ Size Limit: 2GB                                             │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                                                           │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │  Upload Controller                                               │    │
+│  │  ├─ Receive file buffer                                         │    │
+│  │  ├─ Extract metadata                                            │    │
+│  │  ├─ Prepare FormData                                            │    │
+│  │  └─ Stream to Telegram                                          │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     │ HTTPS Request
+                                     │ api.telegram.org/bot<TOKEN>/sendVideo
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        TELEGRAM BOT API                                   │
+│                  (https://api.telegram.org)                              │
+│                                                                           │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │  Bot Token: 8590374410:AAHbu4ZY6-R26wLL5ACE2beQ9VyJuYvxp58     │    │
+│  │  Method: sendVideo                                               │    │
+│  │  Parameters:                                                     │    │
+│  │  ├─ chat_id: @soundora_storage                                  │    │
+│  │  ├─ video: [file buffer]                                        │    │
+│  │  ├─ caption: "Movie Title - 1080p"                              │    │
+│  │  └─ supports_streaming: true                                    │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     │ Upload & Store
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     TELEGRAM STORAGE (Channel/Group)                      │
+│                         @soundora_storage                                 │
+│                                                                           │
+│  📹 Videos Stored with:                                                  │
+│  ├─ file_id: BAACAgIAAxkBAAIC...                                        │
+│  ├─ file_unique_id: AgADqQAD...                                          │
+│  ├─ Duration: 7200 sec                                                   │
+│  ├─ Width: 1920px                                                        │
+│  ├─ Height: 1080px                                                       │
+│  └─ Size: 1.2 GB                                                         │
+└──────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     │ Response with file_id
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          BACKEND RESPONSE                                 │
+│                                                                           │
+│  {                                                                        │
+│    "success": true,                                                       │
+│    "data": {                                                              │
+│      "file_id": "BAACAgIAAxkBAAIC...",                                   │
+│      "videoUrl": "https://t.me/soundora_storage/123",                    │
+│      "quality": "1080p",                                                  │
+│      "uploadedBy": "user_abc123",                                         │
+│      ...                                                                  │
+│    }                                                                      │
+│  }                                                                        │
+└──────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     │ Auto-fill video URL
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         ADMIN PANEL (Updated)                             │
+│                                                                           │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │  ✅ Upload Successful!                                            │   │
+│  │  File ID: BAACAgIAAxkBAAIC...                                     │   │
+│  │                                                                    │   │
+│  │  Source 1080p: https://t.me/soundora_storage/123  ✓ Auto-filled │   │
+│  │                                                                    │   │
+│  │  [💾 Save Movie] <- Click to save to Firestore                   │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     │ Save movie data
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         FIREBASE FIRESTORE                                │
+│                                                                           │
+│  Collection: movies                                                       │
+│  {                                                                        │
+│    id: "movie_123",                                                       │
+│    title: "My Movie",                                                     │
+│    sources: {                                                             │
+│      "1080p": "https://t.me/soundora_storage/123"                        │
+│    },                                                                     │
+│    uploadedBy: "user_abc123",                                             │
+│    createdAt: timestamp                                                   │
+│  }                                                                        │
+└──────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════
+                          DATA FLOW SUMMARY
+═══════════════════════════════════════════════════════════════════════════
+
+1. User selects video in Admin Panel
+2. Frontend sends file + metadata to Backend (localhost:3001)
+3. Backend streams file to Telegram Bot API
+4. Telegram stores video and returns file_id
+5. Backend returns success + metadata to Frontend
+6. Frontend auto-fills video URL in source field
+7. User saves movie → Data stored in Firestore
+
+═══════════════════════════════════════════════════════════════════════════
+                          KEY COMPONENTS
+═══════════════════════════════════════════════════════════════════════════
+
+Frontend:  admin.html (JavaScript + Tailwind CSS)
+Backend:   server.js (Express + Multer)
+Storage:   Telegram Channels (Free, Unlimited)
+Database:  Firebase Firestore
+Auth:      Firebase Authentication
+
+═══════════════════════════════════════════════════════════════════════════

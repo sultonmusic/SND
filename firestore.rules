@@ -1,0 +1,334 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    // ========== HELPER FUNCTIONS ==========
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() &&
+             get(/databases/$(db)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isPartner() {
+      return signedIn() &&
+             get(/databases/$(db)/documents/users/$(request.auth.uid)).data.role == 'partner';
+    }
+
+    function notChanged(field) {
+      return request.resource.data[field] == resource.data[field];
+    }
+
+    // ========== MOVIES ==========
+    match /movies/{movieId} {
+      // Everyone can read
+      allow read: if true;
+
+      // CREATE: admin or partner (partner creates with their own partnerId)
+      allow create: if isAdmin() ||
+        ( isPartner() && request.resource.data.partnerId == request.auth.uid );
+
+      // UPDATE/DELETE: admin or partner (only their own, cannot change partnerId)
+      allow update, delete: if isAdmin() ||
+        ( isPartner() 
+          && resource.data.partnerId == request.auth.uid
+          && notChanged('partnerId') );
+    }
+
+    // ========== NOTIFICATIONS (legacy) ==========
+    match /notifications/{notificationId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ========== CONFIG (Admin Alerts & Messages) ==========
+    match /config/{docId} {
+      // Read: Everyone can read admin announcements
+      allow read: if true;
+      
+      // Write: Only admins
+      allow write: if isAdmin();
+    }
+
+    // ========== USERS ==========
+    match /users/{userId} {
+      // Read: authenticated users can read any user profile
+      allow read: if signedIn();
+
+      // Update: user can update their own profile, or admin can update any
+      allow update: if (signedIn() && userId == request.auth.uid) || isAdmin();
+      
+      // Create: anyone can create during registration
+      allow create: if true;
+      
+      // Delete: only admin
+      allow delete: if isAdmin();
+    }
+
+    // ========== PARTNERS ==========
+    match /partners/{partnerId} {
+      allow read: if isAdmin() || (isPartner() && partnerId == request.auth.uid);
+      allow create: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // ========== SETTINGS ==========
+    match /settings/{settingId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // ========== PROMO CODES ==========
+    match /promo_codes/{promoId} {
+      // Admin can do everything
+      allow create, delete, update: if isAdmin();
+      
+      // Authenticated users can get specific promo code
+      allow get: if signedIn();
+      
+      // Only admin can list all codes
+      allow list: if isAdmin();
+    }
+
+    // ========== SUPPORT CHATS (ARRAY-BASED MESSAGES) ==========
+    match /supportChats/{chatId} {
+      // Create: authenticated user creates chat
+      // - Regular users with userId
+      // - Partners with partnerId
+      allow create: if signedIn() && (
+        (request.resource.data.get('userId', null) == request.auth.uid) ||
+        (request.resource.data.get('partnerId', null) == request.auth.uid && isPartner())
+      );
+
+      // Read: chat owner (user or partner) OR admin
+      allow read: if signedIn() && (
+        resource.data.get('userId', null) == request.auth.uid ||
+        resource.data.get('partnerId', null) == request.auth.uid ||
+        isAdmin()
+      );
+
+      // Update: chat owner can update their messages, admin can update any
+      // Allow updating messages array with arrayUnion
+      allow update: if signedIn() && (
+        resource.data.get('userId', null) == request.auth.uid ||
+        resource.data.get('partnerId', null) == request.auth.uid ||
+        isAdmin()
+      );
+
+      // Delete: admin OR partner who hasn't been opened by admin yet
+      allow delete: if isAdmin() || 
+        (signedIn() && 
+         resource.data.get('partnerId', null) == request.auth.uid && 
+         isPartner() && 
+         resource.data.get('adminOpened', false) == false);
+    }
+
+    // ========== CONTENT REPORTS ==========
+    match /contentReports/{reportId} {
+      // Users can create reports
+      allow create: if signedIn() && 
+        request.resource.data.userId == request.auth.uid;
+      
+      // Users can read their own reports, admin can read all
+      allow read: if signedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Only admin can update/delete
+      allow update, delete: if isAdmin();
+    }
+
+    // ========== USER FEEDBACK ==========
+    match /userFeedback/{feedbackId} {
+      // Users can create feedback
+      allow create: if signedIn() && 
+        request.resource.data.userId == request.auth.uid;
+      
+      // Users can read their own feedback, admin can read/list all
+      allow read, list: if signedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Only admin can update/delete
+      allow update, delete: if isAdmin();
+    }
+
+    // ========== TERMINATION REQUESTS ==========
+    match /terminationRequests/{requestId} {
+      // Partners can create termination requests
+      allow create: if isPartner() && 
+        request.resource.data.partnerId == request.auth.uid;
+      
+      // Partners can read their own requests, admin can read all
+      allow read: if signedIn() && (
+        resource.data.partnerId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Only admin can update/delete
+      allow update, delete: if isAdmin();
+    }
+
+    // ========== MOVIE RATINGS ==========
+    match /movies/{movieId}/ratings/{ratingId} {
+      // Anyone can read ratings
+      allow read: if true;
+      
+      // Authenticated users can create/update their own rating
+      allow create, update: if signedIn() && ratingId == request.auth.uid;
+      
+      // Only admin can delete ratings
+      allow delete: if isAdmin();
+    }
+
+    // ========== MOVIE COMMENTS ==========
+    match /movies/{movieId}/comments/{commentId} {
+      // Anyone can read comments
+      allow read: if true;
+      
+      // Authenticated users can create comments
+      allow create: if signedIn() &&
+        request.resource.data.userId == request.auth.uid;
+      
+      // Users can update/delete their own comments, admin can delete any
+      allow update, delete: if signedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // ========== MOVIE VIEWS COUNTER ==========
+    match /movies/{movieId}/stats/views {
+      // Anyone can read view counts
+      allow read: if true;
+      
+      // Anyone can increment views (using increment())
+      allow update: if true;
+    }
+
+    // ========== USER WATCH HISTORY ==========
+    match /users/{userId}/watchHistory/{historyId} {
+      // User can read their own history, admin can read any
+      allow read: if signedIn() && (
+        userId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // User can create/update their own history
+      allow create, update: if signedIn() && userId == request.auth.uid;
+      
+      // User can delete their own history, admin can delete any
+      allow delete: if signedIn() && (
+        userId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // ========== USER FAVORITES ==========
+    match /users/{userId}/favorites/{favoriteId} {
+      // User can read their own favorites, admin can read any
+      allow read: if signedIn() && (
+        userId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // User can manage their own favorites
+      allow create, update, delete: if signedIn() && userId == request.auth.uid;
+    }
+
+    // ========== HERO SLIDES CONFIGURATION ==========
+    match /config/heroSlides {
+      // Everyone can read hero slides
+      allow read: if true;
+      
+      // Only admin can update
+      allow write: if isAdmin();
+    }
+
+    // ========== REGION RESTRICTIONS ==========
+    match /config/regionRestrictions {
+      // Everyone can read region restrictions
+      allow read: if true;
+      
+      // Only admin can update
+      allow write: if isAdmin();
+    }
+
+    // ========== POLICIES ==========
+    match /config/policies {
+      // Everyone can read policies
+      allow read: if true;
+      
+      // Only admin can update
+      allow write: if isAdmin();
+    }
+
+    // ========== PAYMENT HISTORY ==========
+    match /payments/{paymentId} {
+      // User can read their own payments, admin can read all
+      allow read: if signedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.partnerId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Only system/admin can create payments
+      allow create: if isAdmin();
+      
+      // Only admin can update/delete
+      allow update, delete: if isAdmin();
+    }
+
+    // ========== SUBSCRIPTIONS ==========
+    match /users/{userId}/subscription {
+      // User can read their own subscription, admin can read any
+      allow read: if signedIn() && (
+        userId == request.auth.uid ||
+        isAdmin()
+      );
+      
+      // Only admin can write subscriptions
+      allow write: if isAdmin();
+    }
+
+    // ========== ARCHIVED USERS ==========
+    match /archivedUsers/{userId} {
+      // Only admin can read/write archived users
+      allow read, write: if isAdmin();
+    }
+
+    // ========== ADMIN USERS ==========
+    match /admins/{adminId} {
+      // Only admin can manage other admins
+      allow read, write: if isAdmin();
+    }
+
+    // ========== SUPPORT PROFILE (Support Team Avatar/Info) ==========
+    match /settings/supportProfile {
+      // Everyone can read support profile info
+      allow read: if true;
+      
+      // Only admin can update
+      allow write: if isAdmin();
+    }
+
+    // ========== ADS CONFIGURATION ==========
+    match /config/ads {
+      // Everyone can read ads config
+      allow read: if true;
+      
+      // Only admin can update
+      allow write: if isAdmin();
+    }
+
+    // ========== CATCH-ALL (IMPORTANT: Must be last) ==========
+    // All other collections: deny by default for security
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
